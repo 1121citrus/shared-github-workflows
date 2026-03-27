@@ -1,0 +1,72 @@
+name: Scan
+
+# Reusable Trivy vulnerability scan workflow for 1121citrus Docker image repos.
+#
+# Downloads the 'docker-image' artifact produced by build.yml, loads it,
+# and scans the :latest tag.  Fails on fixable CRITICAL/HIGH CVEs.
+#
+# Usage:
+#   jobs:
+#     scan:
+#       needs: build
+#       uses: 1121citrus/shared-github-workflows/.github/workflows/scan.yml@main
+#       with:
+#         image: 1121citrus/myapp
+#         trivyignore: .trivyignore.yaml   # optional
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Docker Hub image name (no tag; scans the :latest tag)
+        required: true
+        type: string
+      trivyignore:
+        description: >
+          Path to a Trivy ignore file (e.g. .trivyignore.yaml).
+          Leave empty (default) to skip loading an ignore file.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: gunzip -c /tmp/image.tar.gz | docker load
+
+      - name: Cache Trivy vulnerability DB
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: trivy-db-${{ runner.os }}-
+
+      # Pin to a specific commit rather than @master to prevent supply-chain
+      # attacks via a compromised mutable ref.
+      # Update periodically: https://github.com/aquasecurity/trivy-action/releases
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: ${{ inputs.image }}:latest
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: ${{ inputs.trivyignore }}
+        env:
+          TRIVY_NO_PROGRESS: "true"
+          TRIVY_QUIET: "true"

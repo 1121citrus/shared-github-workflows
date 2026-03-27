@@ -1,0 +1,56 @@
+name: Lint
+
+# Reusable lint workflow for 1121citrus Docker image repos.
+#
+# Runs Hadolint, ShellCheck, and markdownlint-cli.  An optional Node.js
+# syntax check step is enabled when node-syntax-check-file is set.
+#
+# Usage:
+#   jobs:
+#     lint:
+#       uses: 1121citrus/shared-github-workflows/.github/workflows/lint.yml@main
+
+on:
+  workflow_call:
+    inputs:
+      node-syntax-check-file:
+        description: >
+          Path to a .mjs / .js file to validate with `node --check`.
+          Leave empty (default) to skip.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Lint Dockerfile with hadolint
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
+
+      - name: Lint shell scripts with shellcheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
+        with:
+          scandir: "."
+          severity: warning
+
+      - name: Node.js syntax check
+        if: ${{ inputs.node-syntax-check-file != '' }}
+        run: node --check ${{ inputs.node-syntax-check-file }}
+
+      - name: Lint markdown with markdownlint-cli
+        run: |
+          docker run --rm \
+            -v "$PWD:/workdir:ro" \
+            -w /workdir \
+            ghcr.io/igorshubovych/markdownlint-cli:v0.48.0 \
+            "**/*.md"
