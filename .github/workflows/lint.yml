@@ -42,6 +42,7 @@ jobs:
         with:
           scandir: "."
           severity: warning
+          version: v0.11.0
 
       - name: Node.js syntax check
         if: ${{ inputs.node-syntax-check-file != '' }}
