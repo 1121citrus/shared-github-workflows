@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# Install repository-managed Git hooks into .git/hooks.
+#
+# Hooks are symlinked so updates under dev/git-hooks/ take effect
+# immediately without re-running this installer.
+
+set -o errexit -o errtrace -o nounset -o pipefail
+
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+TOPLEVEL=$(git rev-parse --show-toplevel)
+GIT_DIR="${TOPLEVEL}/.git"
+
+install-hook() {
+    local name=${1:?Need hook name}
+    local src="${SCRIPT_DIR}/${name}"
+    local dst="${GIT_DIR}/hooks/${name}"
+
+    [[ -f "${src}" ]] || { echo "[ERROR] Missing hook source '${src}'" >&2; return 1; }
+
+    [[ -f "${dst}" || -L "${dst}" ]] && { echo "[INFO] Removing existing ${dst}"; rm -f "${dst}"; }
+
+    echo "[INFO] Linking ${dst} -> ${src}"
+    ln -s "${src}" "${dst}"
+}
+
+install-hook pre-commit

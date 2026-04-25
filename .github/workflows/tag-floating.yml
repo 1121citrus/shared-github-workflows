@@ -1,0 +1,30 @@
+name: Advance floating version tag
+
+# On every push to main, read version.txt, derive the major version, and
+# force-update the floating vN tag (e.g. v1) to point at HEAD.  This lets
+# consumers reference @v1 and automatically receive non-breaking updates
+# without touching their ci.yml files.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Advance floating tag
+        run: |
+          version=$(cat version.txt)
+          major="${version%%.*}"
+          tag="v${major}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag --force "${tag}" HEAD
+          git push --force origin "${tag}"
+          echo "Moved ${tag} to $(git rev-parse --short HEAD) (v${version})"

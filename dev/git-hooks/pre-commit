@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+# pre-commit hook for shared-github-workflows.
+#
+# If any .github/workflows/*.yml file is staged, warns when version.txt
+# is not also staged.  Lets the commit proceed — the version bump is a
+# human judgment call (patch / minor / major); this hook only ensures it
+# is not forgotten.
+
+set -o errexit -o errtrace -o nounset -o pipefail
+
+against() {
+    if git rev-parse --verify HEAD >/dev/null 2>&1; then
+        echo HEAD
+    else
+        git hash-object -t tree /dev/null
+    fi
+}
+
+staged_workflows=$(git diff --cached --name-only --diff-filter=ACMRT \
+    "$(against)" -- '.github/workflows/*.yml' 2>/dev/null || true)
+
+[[ -z "${staged_workflows}" ]] && exit 0
+
+staged_version=$(git diff --cached --name-only --diff-filter=ACMRT \
+    "$(against)" -- 'version.txt' 2>/dev/null || true)
+
+if [[ -z "${staged_version}" ]]; then
+    echo "[WARN] workflow file(s) staged but version.txt was not updated:" >&2
+    while IFS= read -r f; do
+        echo "         ${f}" >&2
+    done <<< "${staged_workflows}"
+    echo "[WARN] bump version.txt (patch/minor/major) if this change affects" \
+         "consumers, then re-stage it." >&2
+    echo "[WARN] committing anyway — update version.txt and re-commit if needed." >&2
+fi
+
+exit 0
