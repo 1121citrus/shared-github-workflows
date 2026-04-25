@@ -14,22 +14,22 @@ Reusable GitHub Actions workflows for [1121citrus](https://github.com/1121citrus
 
 ## Usage
 
-Calling workflows reference workflows at `@main`:
+Calling workflows reference the floating major-version tag `@v1`:
 
 ```yaml
 jobs:
   lint:
-    uses: 1121citrus/shared-github-workflows/.github/workflows/lint.yml@main
+    uses: 1121citrus/shared-github-workflows/.github/workflows/lint.yml@v1
 
   build:
     needs: lint
-    uses: 1121citrus/shared-github-workflows/.github/workflows/build.yml@main
+    uses: 1121citrus/shared-github-workflows/.github/workflows/build.yml@v1
     with:
       image: 1121citrus/myapp
 
   scan:
     needs: build
-    uses: 1121citrus/shared-github-workflows/.github/workflows/scan.yml@main
+    uses: 1121citrus/shared-github-workflows/.github/workflows/scan.yml@v1
     with:
       image: 1121citrus/myapp
 
@@ -40,7 +40,7 @@ jobs:
         startsWith(github.ref, 'refs/tags/v') ||
         github.ref == 'refs/heads/staging'
       )
-    uses: 1121citrus/shared-github-workflows/.github/workflows/push.yml@main
+    uses: 1121citrus/shared-github-workflows/.github/workflows/push.yml@v1
     with:
       image: 1121citrus/myapp
     secrets: inherit
