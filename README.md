@@ -10,7 +10,6 @@ Reusable GitHub Actions workflows for [1121citrus](https://github.com/1121citrus
 | `build.yml` | Build image, upload `docker-image` artifact | `image` (required), `inject-metadata` |
 | `scan.yml` | Trivy CRITICAL/HIGH scan of `:latest` artifact | `image` (required), `trivyignore` |
 | `push.yml` | Multi-platform push to Docker Hub | `image` (required), `staging-use-timestamp` |
-| `release-please.yml` | Automated release PR + semver tag | — |
 
 ## Usage
 
