@@ -233,11 +233,13 @@ jobs:
             -c "apk add --quiet --no-cache ${pkgs} >/dev/null 2>&1 \
                 && ${RUN_ALL_CMD}"
 
-      # custom-sh: arbitrary host command; IMAGE is available if needed.
+      # custom-sh: arbitrary host command; IMAGE and VERSION are available.
+      # VERSION is always "latest" in CI so ${VERSION:-test} patterns resolve.
       - name: Run tests (custom-sh)
         if: inputs.test-mode == 'custom-sh'
         env:
           IMAGE: ${{ inputs.image }}
+          VERSION: latest
         run: ${{ inputs.test-custom-cmd }}
 
   # ── Stage 3 (parallel): Smoke test ──────────────────────────────────────────
