@@ -1,0 +1,294 @@
+name: Pipeline
+
+# Reusable full CI pipeline for 1121citrus Docker image repos.
+#
+# Orchestrates: lint → build → (test ‖ scan ‖ smoke-test) → push.
+#
+# The lint job runs ./build 1 so local and CI lint are identical.
+# The test job branches on test-mode; only modes that need the image
+# download the docker-image artifact.
+# The smoke-test job is skipped when smoke-enabled is false.
+# The push job runs only on v* tag pushes after all gate stages pass.
+#
+# Behavior change vs hand-edited ci.yml files:
+#   - bats-docker-cli mode: tests the NEW built image (from artifact)
+#     rather than the previously published :latest from DockerHub.
+#   - test always runs after build (never parallel with build) to
+#     simplify the dependency graph.
+#
+# Usage:
+#   jobs:
+#     ci:
+#       uses: 1121citrus/shared-github-workflows/.github/workflows/pipeline.yml@v1
+#       with:
+#         image: 1121citrus/myapp
+#         test-mode: bats-docker-cli
+#         test-bats-files: |
+#           test/01-build.bats
+#           test/02-image-contents.bats
+#         smoke-enabled: true
+#         smoke-commands: |
+#           docker run --rm "${IMAGE}:${VERSION}" bash --version
+#       secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+
+      # ── Image ───────────────────────────────────────────────────────────────
+      image:
+        description: Docker Hub image name (e.g. 1121citrus/myapp)
+        required: true
+        type: string
+      inject-metadata:
+        description: >
+          Inject VERSION, GIT_COMMIT, and BUILD_DATE as build-args.
+          Set for images whose tests verify these values at runtime.
+        type: boolean
+        default: false
+
+      # ── Test stage ──────────────────────────────────────────────────────────
+      test-mode:
+        description: >
+          Test execution mode. One of:
+            bats            — bats tests against source mount (no image).
+            bats-docker-cli — bats tests using built image + Docker socket.
+            run-all         — arbitrary script; image available via IMAGE env.
+            run-all-image   — like run-all but wrapped in bats container
+                              with Docker socket and docker-cli installed.
+            custom-sh       — arbitrary shell command on the host runner.
+        required: true
+        type: string
+      test-bats-files:
+        description: >
+          Whitespace/newline-separated list of .bats files (or a directory)
+          passed directly to bats. Used by: bats, bats-docker-cli.
+        type: string
+        default: ''
+      test-run-all-cmd:
+        description: >
+          Shell command that invokes the test harness.
+          Used by: run-all, run-all-image.
+        type: string
+        default: ''
+      test-custom-cmd:
+        description: >
+          Arbitrary shell command run on the host runner.
+          Used by: custom-sh.
+        type: string
+        default: ''
+      test-extra-packages:
+        description: >
+          Space-separated Alpine packages installed inside the bats
+          container before running tests (e.g. gnupg).
+          Used by: bats-docker-cli, run-all-image.
+        type: string
+        default: ''
+      test-pre-command:
+        description: >
+          Shell command run on the host runner before the main test
+          command. Use for fixture generation or other pre-test setup.
+        type: string
+        default: ''
+
+      # ── Smoke-test stage ────────────────────────────────────────────────────
+      smoke-enabled:
+        description: Run the smoke-test stage after build.
+        type: boolean
+        default: false
+      smoke-commands:
+        description: >
+          Newline-delimited list of shell commands executed as smoke
+          tests. Each must exit 0. Commands may reference ${IMAGE}
+          (full image name, e.g. 1121citrus/myapp) and ${VERSION}
+          (always "latest" in CI).
+        type: string
+        default: ''
+
+      # ── Scan stage ──────────────────────────────────────────────────────────
+      trivyignore:
+        description: >
+          Path to a Trivy ignore file (e.g. .trivyignore or
+          .trivyignore.yaml). Leave empty to skip loading an ignore file.
+        type: string
+        default: ''
+
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+
+  # ── Stage 1: Lint ────────────────────────────────────────────────────────────
+  # Delegates to the repo's ./build 1 so that lint tool versions, flags, and
+  # targets are controlled by the project JSON config — identical to local runs.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Lint (stage 1)
+        run: ./build 1
+
+  # ── Stage 2: Build ───────────────────────────────────────────────────────────
+  build:
+    needs: lint
+    uses: 1121citrus/shared-github-workflows/.github/workflows/build.yml@v1
+    with:
+      image: ${{ inputs.image }}
+      inject-metadata: ${{ inputs.inject-metadata }}
+
+  # ── Stage 3: Test ────────────────────────────────────────────────────────────
+  # Runs after build so the docker-image artifact is available for image-dependent
+  # modes.  The bats (source-mount) and custom-sh modes skip the artifact download.
+  test:
+    needs: [lint, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download image artifact
+        if: >
+          inputs.test-mode != 'bats' &&
+          inputs.test-mode != 'custom-sh'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        if: >
+          inputs.test-mode != 'bats' &&
+          inputs.test-mode != 'custom-sh'
+        run: gunzip -c /tmp/image.tar.gz | docker load
+
+      - name: Pre-test command
+        if: inputs.test-pre-command != ''
+        run: ${{ inputs.test-pre-command }}
+
+      # bats: static source-mount tests; no image required.
+      # Source is mounted read-only at /code; workdir is /code.
+      - name: Run tests (bats)
+        if: inputs.test-mode == 'bats'
+        env:
+          BATS_FILES: ${{ inputs.test-bats-files }}
+        run: |
+          # shellcheck disable=SC2086
+          docker run -i --rm \
+            -v "$PWD:/code:ro" \
+            -w /code \
+            bats/bats:1.13.0 \
+            ${BATS_FILES}
+
+      # bats-docker-cli: image-based tests; needs built image and Docker socket.
+      # Source is mounted at host path so nested docker run -v paths resolve.
+      - name: Run tests (bats-docker-cli)
+        if: inputs.test-mode == 'bats-docker-cli'
+        env:
+          IMAGE: ${{ inputs.image }}
+          BATS_FILES: ${{ inputs.test-bats-files }}
+          EXTRA_PACKAGES: ${{ inputs.test-extra-packages }}
+        run: |
+          pkgs="docker-cli${EXTRA_PACKAGES:+ ${EXTRA_PACKAGES}}"
+          # shellcheck disable=SC2086
+          docker run -i --rm \
+            -v "$PWD:$PWD" \
+            -v /tmp:/tmp \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -e "IMAGE=${IMAGE}:latest" \
+            --workdir "$PWD" \
+            --entrypoint sh \
+            bats/bats:1.13.0 \
+            -c "apk add --quiet --no-cache ${pkgs} >/dev/null 2>&1 \
+                && bats ${BATS_FILES}"
+
+      # run-all: delegates to repo's own test harness on the host runner.
+      - name: Run tests (run-all)
+        if: inputs.test-mode == 'run-all'
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: IMAGE="${IMAGE}:latest" ${{ inputs.test-run-all-cmd }}
+
+      # run-all-image: harness wrapped in bats container with Docker socket.
+      - name: Run tests (run-all-image)
+        if: inputs.test-mode == 'run-all-image'
+        env:
+          IMAGE: ${{ inputs.image }}
+          EXTRA_PACKAGES: ${{ inputs.test-extra-packages }}
+          RUN_ALL_CMD: ${{ inputs.test-run-all-cmd }}
+        run: |
+          pkgs="docker-cli${EXTRA_PACKAGES:+ ${EXTRA_PACKAGES}}"
+          docker run --rm -i \
+            -v "$PWD:$PWD" \
+            -v /tmp:/tmp \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -e "IMAGE=${IMAGE}:latest" \
+            --workdir "$PWD" \
+            --entrypoint sh \
+            bats/bats:1.13.0 \
+            -c "apk add --quiet --no-cache ${pkgs} >/dev/null 2>&1 \
+                && ${RUN_ALL_CMD}"
+
+      # custom-sh: arbitrary host command; IMAGE is available if needed.
+      - name: Run tests (custom-sh)
+        if: inputs.test-mode == 'custom-sh'
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: ${{ inputs.test-custom-cmd }}
+
+  # ── Stage 3 (parallel): Smoke test ──────────────────────────────────────────
+  smoke-test:
+    needs: build
+    if: ${{ inputs.smoke-enabled }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: gunzip -c /tmp/image.tar.gz | docker load
+
+      - name: Run smoke tests
+        env:
+          IMAGE: ${{ inputs.image }}
+          full_image: ${{ inputs.image }}
+          VERSION: latest
+          SMOKE_COMMANDS: ${{ inputs.smoke-commands }}
+        run: |
+          while IFS= read -r cmd; do
+            [[ -z "${cmd}" ]] && continue
+            echo "--- ${cmd}"
+            eval "${cmd}"
+          done <<< "${SMOKE_COMMANDS}"
+
+  # ── Stage 4: Security scan ───────────────────────────────────────────────────
+  scan:
+    needs: build
+    uses: 1121citrus/shared-github-workflows/.github/workflows/scan.yml@v1
+    with:
+      image: ${{ inputs.image }}
+      trivyignore: ${{ inputs.trivyignore }}
+
+  # ── Stage 5: Push to Docker Hub ─────────────────────────────────────────────
+  # Runs only on v* tag pushes after all gate stages pass.
+  # smoke-test is allowed to be skipped (when smoke-enabled is false).
+  push:
+    needs: [test, scan, smoke-test]
+    if: >
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.test.result == 'success' &&
+      needs.scan.result == 'success' &&
+      (needs.smoke-test.result == 'success' ||
+       needs.smoke-test.result == 'skipped')
+    uses: 1121citrus/shared-github-workflows/.github/workflows/push.yml@v1
+    with:
+      image: ${{ inputs.image }}
+    secrets: inherit
