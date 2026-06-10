@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-06-10
+
+### Fixed
+
+- `scan.yml`, `lint.yml`: remove `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`
+  env; Node 24 is now the default runtime on current Actions runners
+- `pipeline.yml`: add checkout step to smoke-test job so smoke commands
+  that mount `$PWD` (e.g. bats-kcov E2E) resolve the workspace correctly
+
 ## [1.2.0] - 2026-06-10
 
 ### Added
