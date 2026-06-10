@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-10
+
+### Changed
+
+- `push.yml`: upgrade `docker/build-push-action` from v6.19.2 to v7.2.0;
+  v7 runs on Node 24 natively
+- `build.yml`: same `build-push-action` upgrade
+- `push.yml`, `build.yml`: remove `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`
+  env; redundant with v7
+
+### Removed
+
+- `push.yml`: `staging-use-timestamp` input and all staging-branch tag
+  entries (`:staging`, `:staging-<sha>`, `:staging-<ts>`); staging images
+  served no external purpose and polluted the DockerHub tag namespace
+
 ## [1.0.2] - 2026-04-25
 
 ### Removed
