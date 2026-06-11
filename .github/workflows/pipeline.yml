@@ -188,6 +188,11 @@ jobs:
           EXTRA_PACKAGES: ${{ inputs.test-extra-packages }}
         run: |
           pkgs="docker-cli${EXTRA_PACKAGES:+ ${EXTRA_PACKAGES}}"
+          # Convert newline-separated file list to space-separated so it is
+          # safe to embed inside a double-quoted sh -c string.  Leaving
+          # newlines in place makes sh treat each filename as a separate
+          # command, causing "Permission denied" on non-executable .bats files.
+          bats_args=$(printf '%s' "${BATS_FILES}" | tr '\n' ' ')
           # shellcheck disable=SC2086
           docker run -i --rm \
             -v "$PWD:$PWD" \
@@ -198,7 +203,7 @@ jobs:
             --entrypoint sh \
             bats/bats:1.13.0 \
             -c "apk add --quiet --no-cache ${pkgs} >/dev/null 2>&1 \
-                && bats ${BATS_FILES}"
+                && bats ${bats_args}"
 
       # run-all: delegates to repo's own test harness on the host runner.
       - name: Run tests (run-all)
