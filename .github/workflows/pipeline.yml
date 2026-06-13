@@ -295,12 +295,17 @@ jobs:
   # PRs (refs/pull/*) are always excluded.
   # smoke-test is allowed to be skipped (when smoke-enabled is false).
   #
-  # NOTE: within a reusable workflow github.event_name is always
-  # 'workflow_call', not 'push'.  Use github.ref to distinguish tag vs
-  # branch vs PR instead.
+  # always() is required: without it GitHub auto-skips this job whenever
+  # smoke-test is skipped, regardless of how the if expression evaluates.
+  # From the docs: "if a required dependency was skipped, the job is also
+  # skipped even if the if conditional evaluates to true."
+  #
+  # github.event_name is 'workflow_call' inside a reusable workflow (not
+  # 'push'), so use github.ref to distinguish tag / branch / PR.
   push:
     needs: [test, scan, smoke-test]
     if: >
+      always() &&
       !startsWith(github.ref, 'refs/pull/') &&
       (startsWith(github.ref, 'refs/tags/v') || inputs.force-push) &&
       needs.test.result == 'success' &&

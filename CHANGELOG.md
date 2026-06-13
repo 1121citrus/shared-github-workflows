@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-06-13
+
+### Fixed
+
+- `pipeline.yml`: add `always()` to the push job `if` condition. GitHub
+  auto-skips a dependent job when any job in its `needs` list is skipped,
+  **regardless of how the `if` condition evaluates**, unless `always()` is
+  present in the expression. Because `smoke-test` is skipped when
+  `smoke-enabled` is false (the default), the push job was always
+  auto-skipped before this fix. This was the root cause; the 1.2.2
+  `github.event_name` fix was a necessary but not sufficient change.
+
 ## [1.2.2] - 2026-06-13
 
 ### Fixed
@@ -99,7 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semver sub-tags; staging SHA/timestamp tag modes
 - `release-please.yml`: reusable release-please automation
 
-[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.3...HEAD
+[1.2.3]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/1121citrus/shared-github-workflows/compare/v1.1.0...v1.2.0
