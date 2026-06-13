@@ -113,6 +113,16 @@ on:
         type: string
         default: ''
 
+      # ── Push stage ──────────────────────────────────────────────────────────
+      force-push:
+        description: >
+          Push the image even on non-tag builds (e.g. a dev branch).
+          Useful for debugging. Branch builds are tagged with the branch
+          name (e.g. :dev). Tag builds always push regardless of this flag.
+          PRs are never pushed.
+        type: boolean
+        default: false
+
     secrets:
       DOCKERHUB_USERNAME:
         required: true
@@ -280,13 +290,19 @@ jobs:
       trivyignore: ${{ inputs.trivyignore }}
 
   # ── Stage 5: Push to Docker Hub ─────────────────────────────────────────────
-  # Runs only on v* tag pushes after all gate stages pass.
+  # Default: runs only on v* tag pushes after all gate stages pass.
+  # force-push: also runs on branch builds (tagged with branch name).
+  # PRs (refs/pull/*) are always excluded.
   # smoke-test is allowed to be skipped (when smoke-enabled is false).
+  #
+  # NOTE: within a reusable workflow github.event_name is always
+  # 'workflow_call', not 'push'.  Use github.ref to distinguish tag vs
+  # branch vs PR instead.
   push:
     needs: [test, scan, smoke-test]
     if: >
-      github.event_name == 'push' &&
-      startsWith(github.ref, 'refs/tags/v') &&
+      !startsWith(github.ref, 'refs/pull/') &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.force-push) &&
       needs.test.result == 'success' &&
       needs.scan.result == 'success' &&
       (needs.smoke-test.result == 'success' ||
@@ -294,4 +310,5 @@ jobs:
     uses: 1121citrus/shared-github-workflows/.github/workflows/push.yml@v1
     with:
       image: ${{ inputs.image }}
+      force-push: ${{ inputs.force-push }}
     secrets: inherit

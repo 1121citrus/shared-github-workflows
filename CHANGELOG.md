@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-06-13
+
+### Fixed
+
+- `pipeline.yml`: remove `github.event_name == 'push'` from the push
+  job condition; within a reusable workflow `github.event_name` is always
+  `'workflow_call'`, so the condition always evaluated to false and the
+  push job was silently skipped on every tag push. Replace with
+  `!startsWith(github.ref, 'refs/pull/')` to correctly exclude PRs
+  while allowing tag and (optionally) branch builds through.
+
+### Added
+
+- `pipeline.yml`: new `force-push` boolean input (default `false`).
+  When true, the push stage also runs on branch builds (not just v*
+  tags), enabling dev-branch DockerHub pushes for debugging. PRs are
+  always excluded regardless of this flag.
+- `push.yml`: new `force-push` boolean input; when true, adds a
+  `type=ref,event=branch` tag so branch builds receive a `:dev`-style
+  tag rather than trying to push with no tags.
+
 ## [1.2.1] - 2026-06-10
 
 ### Fixed
@@ -78,7 +99,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semver sub-tags; staging SHA/timestamp tag modes
 - `release-please.yml`: reusable release-please automation
 
-[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.1...v1.2.2
+[1.2.1]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/1121citrus/shared-github-workflows/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/1121citrus/shared-github-workflows/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/1121citrus/shared-github-workflows/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/1121citrus/shared-github-workflows/releases/tag/v1.0.0
