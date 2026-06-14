@@ -205,6 +205,17 @@ main() {
 
     # full: fast-forward merge dev→main, tag, and push all three refs.
 
+    # full mode requires a real PAT: pushes made by GITHUB_TOKEN do not
+    # trigger new workflow runs, so the tag-gated Docker push job would
+    # never fire. Degrade to bump-only when no PAT is available.
+    local token="${PROMOTE_TOKEN:-}"
+    if [[ -z "${token}" ]]; then
+        git push origin dev
+        _log "PROMOTE_TOKEN not set — degraded to bump-only"
+        _log "  set PROMOTE_TOKEN (PAT, contents:write) to enable full promote"
+        exit 0
+    fi
+
     # Fetch main so the ancestry check reflects the latest remote state.
     git fetch origin main
 

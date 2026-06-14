@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-06-14
+
+### Fixed
+
+- `pipeline.yml`, `dev/bin/promote`: in `full` mode, degrade to `bump-only`
+  when `PROMOTE_TOKEN` is absent. Pushes made by `GITHUB_TOKEN` are silently
+  ignored by the GitHub Actions workflow engine, so the tag-triggered Docker
+  push job never fires without a real PAT. The degradation path logs a clear
+  message and pushes only the bump commit to dev. Set `PROMOTE_TOKEN` (a
+  fine-grained PAT with `contents: write`) to enable full promotion.
+- `pipeline.yml`: pass `PROMOTE_TOKEN` secret as env var to the promote step.
+
 ## [1.3.0] - 2026-06-14
 
 ### Added
@@ -128,7 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semver sub-tags; staging SHA/timestamp tag modes
 - `release-please.yml`: reusable release-please automation
 
-[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.3...v1.3.0
 [1.2.3]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.1...v1.2.2

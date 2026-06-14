@@ -362,6 +362,7 @@ jobs:
       - name: Promote
         env:
           AUTO_PROMOTE:   ${{ inputs.auto-promote }}
+          PROMOTE_TOKEN:  ${{ secrets.PROMOTE_TOKEN }}
           GIT_USER_NAME:  CI Automation
           GIT_USER_EMAIL: noreply@github.com
         run: |
@@ -449,6 +450,15 @@ jobs:
               git push origin dev
               _log "bump-only: v${new} committed on dev"
               _log "  to promote manually: git push --atomic origin main v${new}"
+              exit 0
+          fi
+
+          # full mode requires a PAT so the pushed tag triggers a new CI run.
+          # GITHUB_TOKEN pushes are silently ignored by the workflow engine.
+          if [[ -z "${PROMOTE_TOKEN:-}" ]]; then
+              git push origin dev
+              _log "PROMOTE_TOKEN not set — degraded to bump-only"
+              _log "  set PROMOTE_TOKEN (PAT, contents:write) to enable full promote"
               exit 0
           fi
 
