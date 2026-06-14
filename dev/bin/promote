@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# promote — version bump, CHANGELOG promotion, optional merge and tag push.
+#
+# Called by the shared CI pipeline after a successful run on the dev branch.
+# Also runnable locally for testing the bump logic before committing.
+#
+# Required env:
+#   AUTO_PROMOTE    bump-only | full
+#   GIT_USER_NAME   commit author name (e.g. "CI Automation")
+#   GIT_USER_EMAIL  commit author email (e.g. "noreply@github.com")
+#
+# Optional env:
+#   PROMOTE_DRY_RUN  set to any non-empty value to print actions without
+#                    modifying files or running git commands
+#
+# Exit codes:
+#   0  success (including graceful skip conditions)
+#   1  fatal error
+
+set -euo pipefail
+
+# ── Logging helpers ──────────────────────────────────────────────────────────
+
+# Log a message to stdout.
+# Args:
+#   message text
+# Returns:
+#   0 always
+_log() { printf '[promote] %s\n' "${*}"; }
+
+# Log an error and exit non-zero.
+# Args:
+#   message text
+# Returns:
+#   exits 1
+_die() { printf '[promote] error: %s\n' "${*}" >&2; exit 1; }
+
+# Log a skip reason and exit zero.
+# Args:
+#   message text
+# Returns:
+#   exits 0
+_skip() { _log "${*} — no action"; exit 0; }
+
+# ── bump_type ────────────────────────────────────────────────────────────────
+# Inspect conventional commit subjects/bodies since the last tag.
+# Prints: major | minor | patch
+# May call _skip and exit if there is nothing to promote.
+# Args:
+#   None
+# Returns:
+#   0 and writes bump type to stdout; or exits via _skip
+bump_type() {
+    local last_tag
+    last_tag=$(git describe --tags --abbrev=0 2>/dev/null) \
+        || _die "no previous tag found; cannot determine bump type"
+
+    local n_commits
+    n_commits=$(git log "${last_tag}..HEAD" --oneline -- | wc -l | tr -d ' ')
+    [[ "${n_commits}" -gt 0 ]] \
+        || _skip "no commits since ${last_tag}"
+
+    local log
+    log=$(git log "${last_tag}..HEAD" --format='%s%n%b' --)
+
+    echo "${log}" | grep -qF '[skip-promote]' \
+        && _skip "[skip-promote] found in commits since ${last_tag}"
+
+    # Breaking change: subject starts with feat! or fix!, or body contains
+    # the BREAKING CHANGE footer token.
+    echo "${log}" | grep -qE '^(feat|fix)!:|^BREAKING CHANGE' \
+        && { echo major; return; }
+
+    # New feature.
+    echo "${log}" | grep -qE '^feat(\([^)]+\))?:' \
+        && { echo minor; return; }
+
+    echo patch
+}
+
+# ── next_ver ─────────────────────────────────────────────────────────────────
+# Compute the next semver string from a current version and a bump type.
+# Args:
+#   $1  current version string (e.g. 1.2.0)
+#   $2  bump type: major | minor | patch
+# Returns:
+#   0 and writes new version to stdout
+next_ver() {
+    local cur="${1}" bump="${2}"
+    local maj min pat
+    IFS='.' read -r maj min pat <<< "${cur}"
+    case "${bump}" in
+        major) printf '%s\n' "$(( maj + 1 )).0.0"           ;;
+        minor) printf '%s\n' "${maj}.$(( min + 1 )).0"      ;;
+        patch) printf '%s\n' "${maj}.${min}.$(( pat + 1 ))" ;;
+        *)     _die "unknown bump type: ${bump}"             ;;
+    esac
+}
+
+# ── update_files ─────────────────────────────────────────────────────────────
+# Rewrite version.txt and CHANGELOG.md in-place.
+#
+# CHANGELOG edits (GNU sed; Linux CI only):
+#   1. Replace the bare '## [Unreleased]' header line with itself plus a
+#      separator and a new versioned header.
+#   2. Update the [Unreleased] reference link to compare from the new tag.
+#   3. Insert the new version reference link after the [Unreleased] link.
+#
+# Args:
+#   $1  new version (e.g. 1.3.0)
+#   $2  previous version (e.g. 1.2.0)
+# Returns:
+#   0 on success; exits via _die on missing files or unparseable CHANGELOG
+update_files() {
+    local new="${1}" prev="${2}"
+    local date
+    date=$(date -u +%Y-%m-%d)
+
+    [[ -f version.txt ]] || _die "version.txt not found"
+    [[ -f CHANGELOG.md ]] || _die "CHANGELOG.md not found"
+
+    printf '%s\n' "${new}" > version.txt
+
+    # Guard: the script requires a bare [Unreleased] header to replace.
+    grep -q '^## \[Unreleased\]$' CHANGELOG.md \
+        || _die "CHANGELOG.md has no bare '## [Unreleased]' header line"
+
+    # Promote [Unreleased] header → [new] — date.
+    # GNU sed interprets \n as a newline in the replacement string.
+    sed -i \
+        "s|^## \[Unreleased\]$|## [Unreleased]\n\n---\n\n## [${new}] — ${date}|" \
+        CHANGELOG.md
+
+    # Extract the base GitHub URL from the existing [Unreleased] ref link.
+    local base
+    base=$(grep '^\[Unreleased\]:' CHANGELOG.md \
+           | sed 's|\[Unreleased\]: \(.*\)/compare/.*|\1|')
+    [[ -n "${base}" ]] \
+        || _die "cannot parse base URL from [Unreleased] ref link in CHANGELOG.md"
+
+    # Update [Unreleased] ref link to compare from the new tag.
+    sed -i \
+        "s|\[Unreleased\]: .*/compare/.*|\[Unreleased\]: ${base}/compare/v${new}...HEAD|" \
+        CHANGELOG.md
+
+    # Insert the new version ref link on the line after [Unreleased].
+    # Uses s command with captured group + \n rather than the `a` command
+    # to avoid alternate-delimiter portability concerns.
+    local new_link
+    new_link="[${new}]: ${base}/compare/v${prev}...v${new}"
+    sed -i \
+        "s|^\(\[Unreleased\]:.*\)$|\1\n${new_link}|" \
+        CHANGELOG.md
+}
+
+# ── main ─────────────────────────────────────────────────────────────────────
+# Orchestrate the promote flow.
+# Args:
+#   None (reads from env)
+# Returns:
+#   0 on success or graceful skip; 1 on error
+main() {
+    local mode="${AUTO_PROMOTE:?AUTO_PROMOTE is required (bump-only | full)}"
+    local dry="${PROMOTE_DRY_RUN:-}"
+
+    git config user.name  "${GIT_USER_NAME:?GIT_USER_NAME is required}"
+    git config user.email "${GIT_USER_EMAIL:?GIT_USER_EMAIL is required}"
+
+    # Re-trigger loop guard: when we push the bump commit back to dev, CI
+    # fires again. Detecting our own commit subject breaks the cycle without
+    # requiring [skip ci], which would also suppress the tag-triggered CI run
+    # needed for the Docker push job.
+    if git log -1 --format='%s' | grep -q '^chore(release): bump'; then
+        _skip "last commit is a promote commit"
+    fi
+
+    local cur bump new
+    cur=$(cat version.txt)
+    bump=$(bump_type)   # may call _skip and exit
+    new=$(next_ver "${cur}" "${bump}")
+    _log "current=${cur}  bump=${bump}  new=${new}"
+
+    # Guard: version.txt already at target (e.g. bumped manually).
+    [[ "${cur}" != "${new}" ]] || _skip "version.txt already at ${new}"
+
+    if [[ -n "${dry}" ]]; then
+        _log "DRY RUN — would commit: chore(release): bump to ${new}"
+        [[ "${mode}" == "full" ]] \
+            && _log "DRY RUN — would push: --atomic origin dev main v${new}"
+        exit 0
+    fi
+
+    # Apply changes and commit on the current branch (dev).
+    update_files "${new}" "${cur}"
+    git add version.txt CHANGELOG.md
+    git commit -m "chore(release): bump to ${new}"
+
+    # bump-only: push the bump commit to dev; merge, tag, push are manual.
+    if [[ "${mode}" != "full" ]]; then
+        git push origin dev
+        _log "bump-only: v${new} committed on dev"
+        _log "  to promote manually: git push --atomic origin main v${new}"
+        exit 0
+    fi
+
+    # full: fast-forward merge dev→main, tag, and push all three refs.
+
+    # Fetch main so the ancestry check reflects the latest remote state.
+    git fetch origin main
+
+    # Abort if main has diverged from dev (fast-forward is no longer safe).
+    git merge-base --is-ancestor origin/main HEAD \
+        || _die "dev is not fast-forwardable into main — resolve divergence manually"
+
+    git checkout main
+    git merge --ff-only dev \
+        || _die "--ff-only merge failed; main diverged after fetch"
+
+    git tag "v${new}"
+
+    # Push dev, main, and the new tag in a single atomic transaction.
+    # Pushing dev keeps origin/dev in sync so the next CI run on dev sees
+    # the bump commit and skips (last-commit guard).
+    # The tag push triggers the tag-gated push job that publishes the image.
+    git push --atomic origin dev main "v${new}"
+    _log "promoted: dev + main + v${new} pushed"
+}
+
+main "$@"

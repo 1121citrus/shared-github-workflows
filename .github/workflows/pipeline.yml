@@ -123,11 +123,23 @@ on:
         type: boolean
         default: false
 
+      # ── Promote stage ──────────────────────────────────────────────────────
+      auto-promote:
+        description: >
+          Automated promotion mode after a successful CI run on dev.
+            off        — no action (default)
+            bump-only  — commit version bump + CHANGELOG on dev; merge+tag manual
+            full       — bump + fast-forward merge dev→main + atomic push dev/main/tag
+        type: string
+        default: off
+
     secrets:
       DOCKERHUB_USERNAME:
         required: true
       DOCKERHUB_TOKEN:
         required: true
+      PROMOTE_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -317,3 +329,135 @@ jobs:
       image: ${{ inputs.image }}
       force-push: ${{ inputs.force-push }}
     secrets: inherit
+
+  # ── Stage 6: Promote ────────────────────────────────────────────────────────
+  # Runs only on dev branch pushes after all gate stages pass.
+  # Computes the next semver from conventional commit prefixes, updates
+  # version.txt and CHANGELOG.md, commits, and optionally fast-forward
+  # merges dev→main and pushes an annotated tag.
+  #
+  # Loop safety: the promote commit itself re-triggers CI on dev. The inline
+  # script detects its own commit subject (chore(release): bump) and exits
+  # cleanly, so the pipeline terminates after exactly two dev-branch runs
+  # (the original push and the bump commit push).
+  promote:
+    needs: [test, scan, smoke-test]
+    if: >
+      always() &&
+      inputs.auto-promote != 'off' &&
+      github.ref == 'refs/heads/dev' &&
+      needs.test.result == 'success' &&
+      needs.scan.result == 'success' &&
+      (needs.smoke-test.result == 'success' ||
+       needs.smoke-test.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0   # git describe --tags needs full history
+          token: ${{ secrets.PROMOTE_TOKEN || github.token }}
+
+      - name: Promote
+        env:
+          AUTO_PROMOTE:   ${{ inputs.auto-promote }}
+          GIT_USER_NAME:  CI Automation
+          GIT_USER_EMAIL: noreply@github.com
+        run: |
+          set -euo pipefail
+
+          _log()  { printf '[promote] %s\n' "${*}"; }
+          _die()  { printf '[promote] error: %s\n' "${*}" >&2; exit 1; }
+          _skip() { _log "${*} — no action"; exit 0; }
+
+          bump_type() {
+              local last_tag
+              last_tag=$(git describe --tags --abbrev=0 2>/dev/null) \
+                  || _die "no previous tag found"
+              local n_commits
+              n_commits=$(git log "${last_tag}..HEAD" --oneline -- \
+                          | wc -l | tr -d ' ')
+              [[ "${n_commits}" -gt 0 ]] \
+                  || _skip "no commits since ${last_tag}"
+              local log
+              log=$(git log "${last_tag}..HEAD" --format='%s%n%b' --)
+              echo "${log}" | grep -qF '[skip-promote]' \
+                  && _skip "[skip-promote] found in commits since ${last_tag}"
+              echo "${log}" | grep -qE '^(feat|fix)!:|^BREAKING CHANGE' \
+                  && { echo major; return; }
+              echo "${log}" | grep -qE '^feat(\([^)]+\))?:' \
+                  && { echo minor; return; }
+              echo patch
+          }
+
+          next_ver() {
+              local maj min pat
+              IFS='.' read -r maj min pat <<< "${1}"
+              case "${2}" in
+                  major) printf '%s\n' "$(( maj + 1 )).0.0"           ;;
+                  minor) printf '%s\n' "${maj}.$(( min + 1 )).0"      ;;
+                  patch) printf '%s\n' "${maj}.${min}.$(( pat + 1 ))" ;;
+                  *)     _die "unknown bump type: ${2}"                ;;
+              esac
+          }
+
+          update_files() {
+              local new="${1}" prev="${2}"
+              local date; date=$(date -u +%Y-%m-%d)
+              [[ -f version.txt ]] || _die "version.txt not found"
+              [[ -f CHANGELOG.md ]] || _die "CHANGELOG.md not found"
+              printf '%s\n' "${new}" > version.txt
+              grep -q '^## \[Unreleased\]$' CHANGELOG.md \
+                  || _die "no bare '## [Unreleased]' header in CHANGELOG.md"
+              sed -i \
+                  "s|^## \[Unreleased\]$|## [Unreleased]\n\n---\n\n## [${new}] — ${date}|" \
+                  CHANGELOG.md
+              local base
+              base=$(grep '^\[Unreleased\]:' CHANGELOG.md \
+                     | sed 's|\[Unreleased\]: \(.*\)/compare/.*|\1|')
+              [[ -n "${base}" ]] \
+                  || _die "cannot parse base URL from [Unreleased] ref link"
+              sed -i \
+                  "s|\[Unreleased\]: .*/compare/.*|\[Unreleased\]: ${base}/compare/v${new}...HEAD|" \
+                  CHANGELOG.md
+              local new_link="[${new}]: ${base}/compare/v${prev}...v${new}"
+              sed -i \
+                  "s|^\(\[Unreleased\]:.*\)$|\1\n${new_link}|" \
+                  CHANGELOG.md
+          }
+
+          git config user.name  "${GIT_USER_NAME}"
+          git config user.email "${GIT_USER_EMAIL}"
+
+          if git log -1 --format='%s' | grep -q '^chore(release): bump'; then
+              _skip "last commit is a promote commit"
+          fi
+
+          cur=$(cat version.txt)
+          bump=$(bump_type)
+          new=$(next_ver "${cur}" "${bump}")
+          _log "current=${cur}  bump=${bump}  new=${new}"
+
+          [[ "${cur}" != "${new}" ]] || _skip "version.txt already at ${new}"
+
+          update_files "${new}" "${cur}"
+          git add version.txt CHANGELOG.md
+          git commit -m "chore(release): bump to ${new}"
+
+          if [[ "${AUTO_PROMOTE}" != "full" ]]; then
+              git push origin dev
+              _log "bump-only: v${new} committed on dev"
+              _log "  to promote manually: git push --atomic origin main v${new}"
+              exit 0
+          fi
+
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD \
+              || _die "dev not fast-forwardable into main — resolve divergence"
+          git checkout main
+          git merge --ff-only dev \
+              || _die "--ff-only merge failed"
+          git tag "v${new}"
+          git push --atomic origin dev main "v${new}"
+          _log "promoted: dev + main + v${new} pushed"
