@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-14
+
+### Added
+
+- `pipeline.yml`: new `auto-promote` string input (`off|bump-only|full`,
+  default `off`) and optional `PROMOTE_TOKEN` secret. A new Stage 6
+  `promote` job runs after a successful CI run on the `dev` branch:
+  computes the next semver from conventional commit prefixes since the
+  last tag, rewrites `version.txt` and promotes `CHANGELOG.md`
+  `[Unreleased]` to the new version, commits, and — when set to `full`
+  — fast-forward merges `dev→main` and pushes `dev/main/vX.Y.Z`
+  atomically. The tag push triggers the existing push job for Docker
+  image publication. Absent token degrades to `bump-only` automatically.
+- `dev/bin/promote`: standalone bash script implementing the promote
+  logic, inlined in the pipeline job and runnable locally with
+  `PROMOTE_DRY_RUN=1`.
+
 ## [1.2.3] - 2026-06-13
 
 ### Fixed
@@ -111,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semver sub-tags; staging SHA/timestamp tag modes
 - `release-please.yml`: reusable release-please automation
 
-[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.3...HEAD
+[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.3...v1.3.0
 [1.2.3]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.0...v1.2.1
