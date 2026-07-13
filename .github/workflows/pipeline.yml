@@ -135,9 +135,9 @@ on:
 
     secrets:
       DOCKERHUB_USERNAME:
-        required: true
+        required: false
       DOCKERHUB_TOKEN:
-        required: true
+        required: false
       PROMOTE_TOKEN:
         required: false
 
