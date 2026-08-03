@@ -79,7 +79,7 @@ jobs:
           tags: ${{ inputs.image }}:ci-${{ github.sha }}
           build-args: ${{ steps.args.outputs.value }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       # Re-tag as :latest so test scripts that default to IMAGE:latest work
       # without modification.

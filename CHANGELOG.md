@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-08-02
+
+### Fixed
+
+- `build.yml`: added `ignore-error=true` to the `cache-to: type=gha,mode=max`
+  exporter attribute. BuildKit's GitHub Actions cache backend
+  intermittently fails a completed build with `ERROR: failed to build:
+  failed to solve: error writing layer blob: not_found` during the
+  "exporting to GitHub Actions Cache" step, after the image itself has
+  already been built and imported into the local Docker daemon
+  successfully. `ignore-error=true` makes that cache-export write
+  failure non-fatal, since a cache-write failure has no bearing on the
+  correctness of the built image and the export is purely a build-time
+  optimization, not something under test.
+
 ## [1.3.1] - 2026-06-14
 
 ### Fixed
@@ -140,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semver sub-tags; staging SHA/timestamp tag modes
 - `release-please.yml`: reusable release-please automation
 
-[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.3...v1.3.0
 [1.2.3]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.2...v1.2.3
