@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-10-29
+
+### Fixed
+
+- `build.yml` and `push.yml`: pre-pull `moby/buildkit:buildx-stable-1`
+  with up to 3 retries before the `Set up Docker Buildx` step. Both
+  workflows pull this image anonymously from Docker Hub to bootstrap
+  the builder; anonymous pulls from shared GitHub Actions IP ranges
+  intermittently time out (`net/http: TLS handshake timeout`), as seen
+  in usb-explore's `v1.6.1` tag-push run (`build` job, same commit
+  that had just passed on the `main` push). `setup-buildx-action`
+  reuses whatever is already cached locally, so a successful pre-pull
+  makes the subsequent bootstrap a no-op network-wise.
+
 ## [1.3.2] - 2026-08-02
 
 ### Fixed
@@ -155,7 +169,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semver sub-tags; staging SHA/timestamp tag modes
 - `release-please.yml`: reusable release-please automation
 
-[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/1121citrus/shared-github-workflows/compare/v1.2.3...v1.3.0

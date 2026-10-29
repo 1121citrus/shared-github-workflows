@@ -68,6 +68,20 @@ jobs:
             echo "value=" >> "$GITHUB_OUTPUT"
           fi
 
+      # setup-buildx-action pulls moby/buildkit:buildx-stable-1 anonymously
+      # from Docker Hub to bootstrap the builder. Anonymous pulls from
+      # shared GitHub Actions IP ranges intermittently time out; pre-pull
+      # with retries so a transient registry blip doesn't fail the job.
+      # setup-buildx-action reuses whatever is already cached locally.
+      - name: Pre-pull buildkit image
+        run: |
+          for attempt in 1 2 3; do
+            docker pull moby/buildkit:buildx-stable-1 && exit 0
+            echo "pull attempt ${attempt} failed; retrying in 10s" >&2
+            sleep 10
+          done
+          exit 1
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
