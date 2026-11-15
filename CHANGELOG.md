@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-11-15
+
+### Fixed
+
+- `gitleaks-ci.yml`: check out full history and scan every commit in the
+  pushed or pull-request range, instead of only the tip of a shallow
+  clone. A secret added and then removed within one push is now
+  detected. Upgrades `actions/checkout` to v7.0.1 and gitleaks to
+  v8.30.1, and adds a 15-minute job timeout.
+- `tag-floating.yml`: advance the floating `v1` tag with `PROMOTE_TOKEN`
+  instead of the default `GITHUB_TOKEN`, which the protected `v*` tag
+  ruleset rejects. The job now fails with a clear error when the secret
+  is absent.
+
+### Added
+
+- `workflow-tests.yml` and `test/tag-floating.bats`: BATS tests for the
+  floating-tag workflow, run on every push and pull request.
+- `CONTRIBUTING.md`: protected branch and tag policy and the release
+  credential requirements.
+
 ## [1.3.3] - 2026-10-29
 
 ### Fixed
@@ -169,7 +190,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semver sub-tags; staging SHA/timestamp tag modes
 - `release-please.yml`: reusable release-please automation
 
-[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.0...v1.3.1
