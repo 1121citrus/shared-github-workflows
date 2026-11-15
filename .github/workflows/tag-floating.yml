@@ -16,7 +16,19 @@ jobs:
   tag:
     runs-on: ubuntu-latest
     steps:
+      - name: Require authorized release token
+        env:
+          PROMOTE_TOKEN: ${{ secrets.PROMOTE_TOKEN }}
+        run: |
+          if [[ -z "${PROMOTE_TOKEN:-}" ]]; then
+            echo "::error::Set PROMOTE_TOKEN to an authorized" \
+              "release credential"
+            exit 1
+          fi
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.PROMOTE_TOKEN }}
 
       - name: Advance floating tag
         run: |
