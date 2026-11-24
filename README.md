@@ -84,7 +84,14 @@ Secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are consumed via `secrets: in
 All actions are pinned to full commit SHAs with a version comment, e.g.:
 
 ```yaml
-uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ```
 
 Update pins here to update every consuming repo in one PR.
+
+The pipeline and its reusable helper workflows use checkout 7.0.1.
+Checkout uses Node.js 24 and requires Actions Runner 2.327.1 or later.
+
+Callers using `@v1` receive an update only after it is released and the floating
+major-version tag is advanced. A local commit does not change the workflow
+executed by those callers.
