@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-11-23
+
+### Changed
+
+- `pipeline.yml`, `lint.yml`, `build.yml`, `scan.yml`, and `push.yml`:
+  upgrade `actions/checkout` from v4 to v7.0.1, pinned to its full commit
+  SHA. Checkout v7 runs on Node.js 24 and requires Actions Runner 2.327.1
+  or later. Callers receive the update when the floating `v1` tag
+  advances; no inputs, secrets, or outputs change.
+- `README.md`: update the pinning example and document the checkout
+  runner requirement and the floating-tag rollout boundary.
+
 ## [1.3.4] - 2026-11-15
 
 ### Fixed
@@ -190,7 +202,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semver sub-tags; staging SHA/timestamp tag modes
 - `release-please.yml`: reusable release-please automation
 
-[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.4...HEAD
+[Unreleased]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/1121citrus/shared-github-workflows/compare/v1.3.1...v1.3.2
